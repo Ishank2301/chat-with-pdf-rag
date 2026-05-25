@@ -1,0 +1,12 @@
+services:
+  rag-agent:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./news_articles:/app/news_articles:ro
+      - ./chroma_persistent_storage:/app/chroma_persistent_storage
+      - ./logs:/app/logs
+      - ./mlruns:/app/mlruns
+    stdin_open: true
+    tty: true
