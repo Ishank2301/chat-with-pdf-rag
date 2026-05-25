@@ -4,3 +4,12 @@
 
 # LangGraph
 .langgraph_api/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+logs/
+mlruns/
