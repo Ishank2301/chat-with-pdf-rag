@@ -6,6 +6,8 @@ from typing import List
 import tenacity
 from langchain_ollama import OllamaEmbeddings
 
+from .config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,10 +29,13 @@ class EmbeddingManager:
         if self._initialized:
             return
 
-        self._embeddings = OllamaEmbeddings(model="nomic-embed-text")
+        self._embeddings = OllamaEmbeddings(
+            model=settings.embedding_model,
+            base_url=settings.ollama_base_url,
+        )
         self._cache = {}
         self._initialized = True
-        logger.info("Embedding manager initialized")
+        logger.info("Embedding manager initialized with model: %s", settings.embedding_model)
 
     @tenacity.retry(
         wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),

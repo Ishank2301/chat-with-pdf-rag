@@ -4,7 +4,10 @@ import logging
 from typing import Dict, List
 
 import tenacity
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import OllamaLLM
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +25,51 @@ class RAGEngine:
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, model: str = "llama3"):
+    def __init__(
+        self,
+        model: str = settings.llm_model,
+        provider: str = settings.llm_provider,
+    ):
         """
         Initialize RAG engine.
 
         Args:
-            model: Ollama model name.
+            model: LLM model name.
+            provider: LLM provider name.
         """
         if self._initialized:
             return
 
-        self._llm = OllamaLLM(model=model)
+        self._provider = provider.lower()
         self._model_name = model
+        self._llm = self._build_llm()
         self._initialized = True
-        logger.info("RAG engine initialized with model: %s", model)
+        logger.info("RAG engine initialized with %s model: %s", self._provider, model)
+
+    def _build_llm(self):
+        """Create the configured LLM client."""
+        if self._provider == "gemini":
+            if not settings.google_api_key:
+                raise ValueError("GOOGLE_API_KEY is required when LLM_PROVIDER=gemini")
+            return ChatGoogleGenerativeAI(
+                model=self._model_name,
+                google_api_key=settings.google_api_key,
+            )
+
+        if self._provider == "ollama":
+            return OllamaLLM(
+                model=self._model_name,
+                base_url=settings.ollama_base_url,
+            )
+
+        raise ValueError(f"Unsupported LLM provider: {self._provider}")
+
+    def _invoke(self, prompt: str) -> str:
+        """Invoke the configured LLM and return plain text."""
+        response = self._llm.invoke(prompt)
+        if hasattr(response, "content"):
+            return str(response.content).strip()
+        return str(response).strip()
 
     @tenacity.retry(
         wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
@@ -79,9 +113,9 @@ Answer:"""
 
         try:
             logger.info("Generating response for query: %s", question[:50])
-            answer = self._llm.invoke(prompt)
+            answer = self._invoke(prompt)
             logger.info("Response generated successfully")
-            return answer.strip()
+            return answer
 
         except Exception as e:
             logger.error("Response generation failed: %s", e)
@@ -128,9 +162,9 @@ Summary:"""
 
         try:
             logger.info("Summarizing %s document(s)", len(documents))
-            summary = self._llm.invoke(prompt)
+            summary = self._invoke(prompt)
             logger.info("Summary generated successfully")
-            return summary.strip()
+            return summary
 
         except Exception as e:
             logger.error("Summarization failed: %s", e)
@@ -181,7 +215,7 @@ KEY_MISSING_ELEMENTS:
 
         try:
             logger.info("Analyzing resume for ATS score")
-            analysis = self._llm.invoke(prompt)
+            analysis = self._invoke(prompt)
             logger.info("ATS analysis completed")
 
             return self._parse_ats_analysis(analysis)

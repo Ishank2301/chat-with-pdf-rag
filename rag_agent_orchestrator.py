@@ -9,6 +9,7 @@ from core import (
     RAGEngine,
     SemanticChunker,
     VectorDatabaseManager,
+    settings,
     setup_logging,
 )
 
@@ -20,7 +21,7 @@ class RAGAgent:
 
     def __init__(self):
         """Initialize the RAG agent components."""
-        setup_logging()
+        setup_logging(settings.log_level, settings.log_file)
 
         self.embedding_manager = EmbeddingManager()
         self.semantic_chunker = SemanticChunker(chunk_size=1000, chunk_overlap=200)

@@ -4,13 +4,15 @@ import logging
 import logging.handlers
 from pathlib import Path
 
+from .config import settings
+
 LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
 
 def setup_logging(
-    log_level: str = "INFO",
-    log_file: str = "rag_agent.log",
+    log_level: str = settings.log_level,
+    log_file: str = settings.log_file,
 ) -> None:
     """
     Set up console and rotating file logging.

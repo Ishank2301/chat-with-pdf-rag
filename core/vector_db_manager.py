@@ -5,6 +5,8 @@ from typing import Dict, List, Optional
 
 import chromadb
 
+from .config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,8 +26,8 @@ class VectorDatabaseManager:
 
     def __init__(
         self,
-        path: str = "chroma_persistent_storage",
-        collection_name: str = "rag_documents",
+        path: str = settings.chroma_path,
+        collection_name: str = settings.chroma_collection,
     ):
         """
         Initialize vector database manager with singleton pattern.

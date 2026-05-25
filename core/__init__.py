@@ -1,8 +1,6 @@
-"""
-2026 RAG Agent - Core package initialization.
-Exports all core components for easy importing.
-"""
+"""Core package exports."""
 
+from .config import settings
 from .logger_config import setup_logging
 from .embedding_manager import EmbeddingManager
 from .semantic_chunker import SemanticChunker
@@ -11,6 +9,7 @@ from .vector_db_manager import VectorDatabaseManager
 from .rag_engine import RAGEngine
 
 __all__ = [
+    "settings",
     "setup_logging",
     "EmbeddingManager",
     "SemanticChunker",
