@@ -7,6 +7,7 @@ from .semantic_chunker import SemanticChunker
 from .document_loader import DocumentLoader
 from .vector_db_manager import VectorDatabaseManager
 from .rag_engine import RAGEngine
+from .mlflow_tracker import MLflowTracker
 
 __all__ = [
     "settings",
@@ -16,6 +17,7 @@ __all__ = [
     "DocumentLoader",
     "VectorDatabaseManager",
     "RAGEngine",
+    "MLflowTracker",
 ]
 
 __version__ = "2.0.0"

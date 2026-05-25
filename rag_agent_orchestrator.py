@@ -6,6 +6,7 @@ from typing import Dict
 from core import (
     DocumentLoader,
     EmbeddingManager,
+    MLflowTracker,
     RAGEngine,
     SemanticChunker,
     VectorDatabaseManager,
@@ -28,6 +29,7 @@ class RAGAgent:
         self.document_loader = DocumentLoader()
         self.vector_db = VectorDatabaseManager()
         self.rag_engine = RAGEngine()
+        self.mlflow_tracker = MLflowTracker()
 
         logger.info("RAG agent initialized successfully")
 
@@ -48,49 +50,67 @@ class RAGAgent:
         Returns:
             Ingestion statistics.
         """
-        logger.info("Starting document ingestion from: %s", directory_path)
+        with self.mlflow_tracker.start_run(
+            "ingest_documents",
+            {
+                "directory_path": directory_path,
+                "use_parallel": use_parallel,
+                "num_workers": num_workers,
+            },
+        ):
+            logger.info("Starting document ingestion from: %s", directory_path)
 
-        if use_parallel:
-            documents = self.document_loader.load_documents_parallel(
-                directory_path,
-                num_workers=num_workers,
+            if use_parallel:
+                documents = self.document_loader.load_documents_parallel(
+                    directory_path,
+                    num_workers=num_workers,
+                )
+            else:
+                documents = self.document_loader.load_directory(directory_path)
+
+            if not documents:
+                logger.warning("No documents loaded")
+                self.mlflow_tracker.log_metrics({"documents_loaded": 0, "chunks_created": 0})
+                return {"status": "error", "message": "No documents found"}
+
+            logger.info("Chunking %s documents", len(documents))
+            chunked_docs = self.semantic_chunker.chunk_documents(documents)
+
+            if not chunked_docs:
+                logger.error("Failed to chunk documents")
+                self.mlflow_tracker.log_metrics({
+                    "documents_loaded": len(documents),
+                    "chunks_created": 0,
+                })
+                return {"status": "error", "message": "Chunking failed"}
+
+            logger.info("Generating embeddings for %s chunks", len(chunked_docs))
+            texts = [doc["text"] for doc in chunked_docs]
+            embeddings = self.embedding_manager.embed_batch(texts, batch_size=32)
+
+            logger.info("Upserting chunks to vector database")
+            ids = [doc["id"] for doc in chunked_docs]
+            self.vector_db.upsert_batch(
+                ids=ids,
+                documents=texts,
+                embeddings=embeddings,
+                metadatas=chunked_docs,
             )
-        else:
-            documents = self.document_loader.load_directory(directory_path)
 
-        if not documents:
-            logger.warning("No documents loaded")
-            return {"status": "error", "message": "No documents found"}
+            stats = self.vector_db.get_collection_stats()
+            logger.info("Document ingestion complete: %s total documents", stats["document_count"])
+            self.mlflow_tracker.log_metrics({
+                "documents_loaded": len(documents),
+                "chunks_created": len(chunked_docs),
+                "total_in_database": stats["document_count"],
+            })
 
-        logger.info("Chunking %s documents", len(documents))
-        chunked_docs = self.semantic_chunker.chunk_documents(documents)
-
-        if not chunked_docs:
-            logger.error("Failed to chunk documents")
-            return {"status": "error", "message": "Chunking failed"}
-
-        logger.info("Generating embeddings for %s chunks", len(chunked_docs))
-        texts = [doc["text"] for doc in chunked_docs]
-        embeddings = self.embedding_manager.embed_batch(texts, batch_size=32)
-
-        logger.info("Upserting chunks to vector database")
-        ids = [doc["id"] for doc in chunked_docs]
-        self.vector_db.upsert_batch(
-            ids=ids,
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=chunked_docs,
-        )
-
-        stats = self.vector_db.get_collection_stats()
-        logger.info("Document ingestion complete: %s total documents", stats["document_count"])
-
-        return {
-            "status": "success",
-            "documents_loaded": len(documents),
-            "chunks_created": len(chunked_docs),
-            "total_in_database": stats["document_count"],
-        }
+            return {
+                "status": "success",
+                "documents_loaded": len(documents),
+                "chunks_created": len(chunked_docs),
+                "total_in_database": stats["document_count"],
+            }
 
     def query_documents(
         self,
@@ -109,47 +129,52 @@ class RAGAgent:
         Returns:
             Answer and optional metadata.
         """
-        logger.info("Processing query: %s", question)
+        with self.mlflow_tracker.start_run(
+            "query_documents",
+            {"n_results": n_results, "return_relevant_chunks": return_relevant_chunks},
+        ):
+            logger.info("Processing query: %s", question)
 
-        try:
-            query_embedding = self.embedding_manager.embed_query(
-                question,
-                use_cache=True,
-            )
+            try:
+                query_embedding = self.embedding_manager.embed_query(
+                    question,
+                    use_cache=True,
+                )
 
-            results = self.vector_db.query(query_embedding, n_results=n_results)
-            relevant_chunks = results["documents"][0] if results["documents"] else []
+                results = self.vector_db.query(query_embedding, n_results=n_results)
+                relevant_chunks = results["documents"][0] if results["documents"] else []
+                self.mlflow_tracker.log_metrics({"num_sources": len(relevant_chunks)})
 
-            if not relevant_chunks:
-                logger.warning("No relevant documents found")
-                return {
+                if not relevant_chunks:
+                    logger.warning("No relevant documents found")
+                    return {
+                        "status": "success",
+                        "answer": "I could not find relevant information to answer your question.",
+                        "confidence": 0.0,
+                    }
+
+                answer = self.rag_engine.generate_response(
+                    question,
+                    relevant_chunks,
+                    max_length=3,
+                )
+
+                result = {
                     "status": "success",
-                    "answer": "I could not find relevant information to answer your question.",
-                    "confidence": 0.0,
+                    "question": question,
+                    "answer": answer,
+                    "num_sources": len(relevant_chunks),
                 }
 
-            answer = self.rag_engine.generate_response(
-                question,
-                relevant_chunks,
-                max_length=3,
-            )
+                if return_relevant_chunks:
+                    result["relevant_chunks"] = relevant_chunks
 
-            result = {
-                "status": "success",
-                "question": question,
-                "answer": answer,
-                "num_sources": len(relevant_chunks),
-            }
+                logger.info("Query processed with %s sources", len(relevant_chunks))
+                return result
 
-            if return_relevant_chunks:
-                result["relevant_chunks"] = relevant_chunks
-
-            logger.info("Query processed with %s sources", len(relevant_chunks))
-            return result
-
-        except Exception as e:
-            logger.error("Query processing failed: %s", e)
-            return {"status": "error", "message": str(e)}
+            except Exception as e:
+                logger.error("Query processing failed: %s", e)
+                return {"status": "error", "message": str(e)}
 
     def summarize_document(
         self,
@@ -166,25 +191,30 @@ class RAGAgent:
         Returns:
             Summary and metadata.
         """
-        logger.info("Summarizing document: %s", document_path)
+        with self.mlflow_tracker.start_run(
+            "summarize_document",
+            {"summary_length": summary_length},
+        ):
+            logger.info("Summarizing document: %s", document_path)
 
-        try:
-            doc = self.document_loader.load_text_file(document_path)
-            summary = self.rag_engine.summarize_documents(
-                [doc["text"]],
-                summary_length=summary_length,
-            )
+            try:
+                doc = self.document_loader.load_text_file(document_path)
+                summary = self.rag_engine.summarize_documents(
+                    [doc["text"]],
+                    summary_length=summary_length,
+                )
+                self.mlflow_tracker.log_metrics({"document_characters": len(doc["text"])})
 
-            logger.info("Document summarization complete")
-            return {
-                "status": "success",
-                "document": document_path,
-                "summary": summary,
-            }
+                logger.info("Document summarization complete")
+                return {
+                    "status": "success",
+                    "document": document_path,
+                    "summary": summary,
+                }
 
-        except Exception as e:
-            logger.error("Summarization failed: %s", e)
-            return {"status": "error", "message": str(e)}
+            except Exception as e:
+                logger.error("Summarization failed: %s", e)
+                return {"status": "error", "message": str(e)}
 
     def analyze_resume(self, resume_path: str) -> Dict[str, any]:
         """
@@ -196,22 +226,27 @@ class RAGAgent:
         Returns:
             ATS score, strengths, weaknesses, and suggestions.
         """
-        logger.info("Analyzing resume: %s", resume_path)
+        with self.mlflow_tracker.start_run("analyze_resume"):
+            logger.info("Analyzing resume: %s", resume_path)
 
-        try:
-            resume_doc = self.document_loader.load_text_file(resume_path)
-            analysis = self.rag_engine.analyze_resume_ats_score(resume_doc["text"])
+            try:
+                resume_doc = self.document_loader.load_text_file(resume_path)
+                analysis = self.rag_engine.analyze_resume_ats_score(resume_doc["text"])
+                self.mlflow_tracker.log_metrics({
+                    "ats_score": analysis["ats_score"],
+                    "resume_characters": len(resume_doc["text"]),
+                })
 
-            logger.info("Resume analysis complete. ATS score: %s", analysis["ats_score"])
-            return {
-                "status": "success",
-                "resume_file": resume_path,
-                **analysis,
-            }
+                logger.info("Resume analysis complete. ATS score: %s", analysis["ats_score"])
+                return {
+                    "status": "success",
+                    "resume_file": resume_path,
+                    **analysis,
+                }
 
-        except Exception as e:
-            logger.error("Resume analysis failed: %s", e)
-            return {"status": "error", "message": str(e)}
+            except Exception as e:
+                logger.error("Resume analysis failed: %s", e)
+                return {"status": "error", "message": str(e)}
 
     def get_database_stats(self) -> Dict[str, any]:
         """Get vector database statistics."""
