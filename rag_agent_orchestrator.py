@@ -1,7 +1,7 @@
 """Main application logic for document processing and querying."""
 
 import logging
-from typing import Dict
+from typing import Any, Dict
 
 from core import (
     DocumentLoader,
@@ -38,7 +38,7 @@ class RAGAgent:
         directory_path: str,
         use_parallel: bool = True,
         num_workers: int = 4,
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Ingest and process documents from directory.
 
@@ -117,7 +117,7 @@ class RAGAgent:
         question: str,
         n_results: int = 3,
         return_relevant_chunks: bool = False,
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Query documents and generate an answer.
 
@@ -180,7 +180,7 @@ class RAGAgent:
         self,
         document_path: str,
         summary_length: str = "short",
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Summarize a single document.
 
@@ -216,7 +216,7 @@ class RAGAgent:
                 logger.error("Summarization failed: %s", e)
                 return {"status": "error", "message": str(e)}
 
-    def analyze_resume(self, resume_path: str) -> Dict[str, any]:
+    def analyze_resume(self, resume_path: str) -> Dict[str, Any]:
         """
         Analyze resume for ATS compatibility.
 
@@ -248,7 +248,7 @@ class RAGAgent:
                 logger.error("Resume analysis failed: %s", e)
                 return {"status": "error", "message": str(e)}
 
-    def get_database_stats(self) -> Dict[str, any]:
+    def get_database_stats(self) -> Dict[str, Any]:
         """Get vector database statistics."""
         try:
             stats = self.vector_db.get_collection_stats()

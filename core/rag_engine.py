@@ -1,7 +1,7 @@
 """Query and response generation engine."""
 
 import logging
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import tenacity
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -175,7 +175,7 @@ Summary:"""
         stop=tenacity.stop_after_attempt(3),
         reraise=True,
     )
-    def analyze_resume_ats_score(self, resume_text: str) -> Dict[str, any]:
+    def analyze_resume_ats_score(self, resume_text: str) -> Dict[str, Any]:
         """
         Analyze resume for ATS compatibility and score.
 
@@ -224,7 +224,7 @@ KEY_MISSING_ELEMENTS:
             logger.error("ATS analysis failed: %s", e)
             raise
 
-    def _parse_ats_analysis(self, analysis: str) -> Dict[str, any]:
+    def _parse_ats_analysis(self, analysis: str) -> Dict[str, Any]:
         """Parse ATS analysis response into structured format."""
         result = {
             "raw_analysis": analysis,
