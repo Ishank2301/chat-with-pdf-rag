@@ -1,4 +1,3 @@
-"""Application entry point for CLI and programmatic usage."""
 
 import os
 
