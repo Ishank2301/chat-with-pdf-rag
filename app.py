@@ -12,7 +12,6 @@ def main_cli():
 
 
 
-# CLu should run succesfully
 
 
 def main_programmatic():
