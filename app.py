@@ -11,6 +11,10 @@ def main_cli():
     cli.run()
 
 
+
+# CLu should run succesfully
+
+
 def main_programmatic():
     """Run a small programmatic usage example."""
     print("RAG Agent - Programmatic Example\n")
